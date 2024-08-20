@@ -12,9 +12,8 @@
     5. explore alignment
 */ 
 
-void kill(const char *message) {
+void err(const char *message) {
     perror(message);
-    exit(EXIT_FAILURE);
 }
 
 // embedded list
@@ -94,45 +93,60 @@ mem_chunk *incr_brk(size_t bytes) {
     }
 
     mem_chunk *cast_ret = (mem_chunk *)ret;
-    cast_ret->size = bytes;
+    cast_ret->size = bytes - sizeof(mem_chunk);
 
     insert_on_free_list(cast_ret);
-    return free_list;
+    return cast_ret;
 } 
 
 void *memalloc(size_t size) {
-    // iterate on free_list to look for one that fits - first fit
-
-    mem_chunk *t = free_list;
+    mem_chunk *pt = free_list, *t = free_list->next;
     bool found = 0;
 
+    mem_chunk *mem;
+
     while(t) {
-
         if(t->size >= size) {
+            mem = t;
             if(t->size == size) {
-
+                pt->next = t->next;
+                t->next = allocated_list;
+                allocated_list = t;
+                
             } else {
                 // break the big chunk
+                mem->next = allocated_list;
+                allocated_list = mem;
+
+                t->size -= size;
+                t  = (mem_chunk *)((char *)t + size);
+                pt->next = t;
             }
             found = 1;
+            break;
         }
 
-
+        pt = t;
         t = t->next;
     }
 
     if(!found) {
         mem_chunk *p = incr_brk(size);
-        if(p == NULL) kill("Unable to allocate more memory");
-        return NULL;
+        if(p == NULL) {
+            err("Unable to allocate more memory");
+            return NULL;
+        }
+        return (char *)p + sizeof(mem_chunk);
     }
 
-    return NULL;
+    return (char *)mem + sizeof(mem_chunk);
 }
 
 int main() {
-    // printf("free list contains: %zu chunks\n", get_size_free_list());
-
+    void *p1 = memalloc(8);
+    printf("free list contains: %zu chunks\n", get_free_list());
+    printf("usable at: %p\n", p1);
+    
 
     return 0;
 }
