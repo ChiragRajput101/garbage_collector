@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <stdbool.h>
 
+#define ALIGN 16
+
 /*
     Req:
     1. alloc mem as user asks for it, also implement a free mem functionality
@@ -15,21 +17,17 @@ void err(const char *message) {
     perror(message);
 }
 
-
 // embedded list
 typedef struct mem_chunk {
-    // bool               is_alloc; 
     size_t             size;
     struct mem_chunk   *next;
 } mem_chunk;
 
-static mem_chunk sink; // 0 size sink for the free list
-// init the free_list (on Data Segment)
+// init on .bss
+static mem_chunk sink;
 static mem_chunk *free_list = &sink;
-
-
-static mem_chunk sink2;
 static mem_chunk *allocated_list;
+
 
 size_t align(size_t bytes) {
     return ((bytes + sizeof(mem_chunk) - 1) & ~(sizeof(mem_chunk) - 1));
@@ -38,8 +36,11 @@ size_t align(size_t bytes) {
 // ordered
 // insert: O(N), merge: O(1)
 void insert_on_free_list(mem_chunk *ptr) {
+    printf("recievd a block : %p of size %zu\n", ptr, ptr->size);
     mem_chunk *t = free_list;
     bool found = 0;
+
+    size_t aligned_size = ptr->size / ALIGN;
 
     while(t) {    
         if(ptr > t) {
@@ -52,27 +53,19 @@ void insert_on_free_list(mem_chunk *ptr) {
     }
 
     if(found) {
-        // coalescing w/ the free chunk ahead
-        if(t->next && (ptr + ptr->size + sizeof(mem_chunk) == t->next)) {
-            ptr->size += t->next->size;
+        if(t->next && ((ptr + aligned_size + 1) == t->next)) {
+            ptr->size += t->next->size + sizeof(mem_chunk);
             ptr->next = t->next->next;
         } else {
             ptr->next = t->next;
         }
 
-        // coalescing w/ the free chunk before
-        if(t + t->size + sizeof(mem_chunk) == ptr) {
-            t->size += ptr->size;
-            t->next = ptr->next;
-        } else {
-            t->next = ptr;
-        }
+        t->next = ptr;    
     }
 }
 
 // tested: OK insertion based on order
 // TODO: test merge by fragmenting a chunk and then adding it back to free_list
-void test_insert_on_free_list() {}
 
 size_t get_free_list(void) {
     size_t s = -1;
@@ -118,19 +111,19 @@ void *memalloc(size_t size) {
             mem = t;
             if(t->size == size) {
                 pt->next = t->next;
-                // mem->next = allocated_list;
-                // allocated_list = mem;
                 
             } else {
                 // break the big chunk
-                // mem->next = allocated_list;
-                // allocated_list = mem;
-
                 mem_chunk *new_chunk = (mem_chunk *)((char *)t + sizeof(mem_chunk) + size); // t -> |metadata|available mem|
-                new_chunk->size = t->size - size;
+                new_chunk->size = t->size - size - sizeof(mem_chunk);
                 pt->next = new_chunk;
                 new_chunk->next = t->next;
+                
+                t->next = NULL;
             }
+            mem->size = size;
+            mem->next = allocated_list;
+            allocated_list = mem;
 
             return (char *)mem + sizeof(mem_chunk);
         }
@@ -144,20 +137,45 @@ void *memalloc(size_t size) {
         err("Unable to allocate more memory");
         return NULL;
     }
-    return (char *)p + sizeof(mem_chunk);
-    
+    return (char *)p + sizeof(mem_chunk);  
+}
+
+bool free_mem(void *ptr) {
+    // searches the chunk on allocated list, removes it and inserts into the free list
+    // O(alloced chunks) + O(free chunks)
+    ptr = (void *)((char *)ptr - sizeof(mem_chunk));
+    mem_chunk *p = allocated_list, *prev = NULL;
+    mem_chunk *tobefree = NULL;
+    while(p) {
+        if(p == ptr) {
+            printf("found chunk to be freed: %p of size: %zu\n", p, p->size);
+            tobefree = p;
+            if(p == allocated_list) allocated_list = allocated_list->next;
+            prev->next = p->next;
+            insert_on_free_list(tobefree);
+            return EXIT_SUCCESS;
+        }
+        prev = p;
+        p = p->next;
+    }
+    return EXIT_FAILURE;
 }
 
 int main() {
-    // void *p = memalloc(10);
-    // void *p1 = memalloc(30);
-    // void *p2 = memalloc(35);
+    void *p = memalloc(10);
     void *p3 = memalloc(50);
     void *p4 = memalloc(70);
     printf("free list contains: %zu chunks\n", get_free_list());
-    void *p = memalloc(32);
-    printf("\n\n");
+    // free_mem();
+    void *px = memalloc(16);
+    printf("\n usable at: %p\n\n", px);
     printf("free list contains: %zu chunks\n", get_free_list());
+    // free_mem();
 
+    void *py = memalloc(32);
+    printf("\n usable at: %p\n\n", py);
+    printf("free list contains: %zu chunks\n", get_free_list());
+    if(free_mem(px) != 0) printf("Free Failed\n");
+    printf("free list contains: %zu chunks\n", get_free_list());
     return 0;
 }
