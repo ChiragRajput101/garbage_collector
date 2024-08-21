@@ -147,6 +147,7 @@ bool free_mem(void *ptr) {
     mem_chunk *tobefree = (mem_chunk *)((char *)ptr - sizeof(mem_chunk));
     tobefree->next = NULL;
     insert_on_free_list(tobefree);
+    return 0;
 }
 
 int main() {
