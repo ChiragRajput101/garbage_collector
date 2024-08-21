@@ -59,8 +59,7 @@ void insert_on_free_list(mem_chunk *ptr) {
         } else {
             ptr->next = t->next;
         }
-
-        t->next = ptr;    
+        t->next = ptr;     
     }
 }
 
@@ -143,22 +142,11 @@ void *memalloc(size_t size) {
 bool free_mem(void *ptr) {
     // searches the chunk on allocated list, removes it and inserts into the free list
     // O(alloced chunks) + O(free chunks)
-    ptr = (void *)((char *)ptr - sizeof(mem_chunk));
-    mem_chunk *p = allocated_list, *prev = NULL;
-    mem_chunk *tobefree = NULL;
-    while(p) {
-        if(p == ptr) {
-            printf("found chunk to be freed: %p of size: %zu\n", p, p->size);
-            tobefree = p;
-            if(p == allocated_list) allocated_list = allocated_list->next;
-            prev->next = p->next;
-            insert_on_free_list(tobefree);
-            return EXIT_SUCCESS;
-        }
-        prev = p;
-        p = p->next;
-    }
-    return EXIT_FAILURE;
+
+    // mem_chunk *p = allocated_list, *prev = NULL;
+    mem_chunk *tobefree = (mem_chunk *)((char *)ptr - sizeof(mem_chunk));
+    tobefree->next = NULL;
+    insert_on_free_list(tobefree);
 }
 
 int main() {
@@ -175,7 +163,7 @@ int main() {
     void *py = memalloc(32);
     printf("\n usable at: %p\n\n", py);
     printf("free list contains: %zu chunks\n", get_free_list());
-    if(free_mem(px) != 0) printf("Free Failed\n");
+    if(free_mem(py) != 0) printf("Free Failed\n");
     printf("free list contains: %zu chunks\n", get_free_list());
     return 0;
 }
